@@ -1,0 +1,218 @@
+---
+title: "2023 College Football Win Predictors"
+author: "Quinn Brennan"
+date: "04-27-25"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: false
+    df_print: paged
+---
+
+<style type="text/css">
+/* Title */
+h1.title {
+  color: #262626;
+  font-size:40px;
+  font-weight: bold;
+}
+/* Level 1 header */
+h1 {
+  color: #ED4F4F;
+}
+/* Level 2 header */
+h2 {
+  color: #ED4F4F;
+}
+/* Level 3 header */
+h3 {
+  color: #8B7E66;
+}
+/* Level 4 header */
+h4 {
+  font-weight: bold;
+}
+/* Table of contents */
+.list-group-item.active, .list-group-item.active:focus, .list-group-item.active:hover {
+    z-index: 2;
+    color: #fff;
+    background-color: #ED4F4F;
+    border-color: #ED4F4F;
+}
+    
+</style>
+
+```{r setup, include=FALSE}
+# global chunk options
+knitr::opts_chunk$set(echo = FALSE,
+                      error = TRUE,
+                      message = FALSE, 
+                      warning = FALSE,
+                      comment = NA,
+                      fig.width=9, 
+                      fig.height=7)
+```
+# College Football Analysis - What features translate into wins? 
+
+#### Quinn Brennan
+
+## Introduction 
+
+This analysis investigates whether offensive or defensive performance is more strongly associated with winning in college football. Using team-level data from the 2023 NCAA season sourced from Kaggle, I examine the relationship between key performance metrics and win percentage.
+
+The dataset was cleaned and transformed to support visualization and linear regression analysis. I evaluate offensive touchdowns, defensive touchdowns allowed, yardage efficiency, and turnover margin to determine which factors best explain team success.
+
+## Methods
+
+Team-level data from the 2023 NCAA football season was used to evaluate whether offensive or defensive metrics better predict win percentage. Touchdowns, yards per game, yards allowed per game, and turnover margin were selected for analysis.
+
+The data was cleaned by converting relevant variables to numeric formats and separating win–loss records into individual components. A win percentage variable was created to improve interpretability. Visualizations were produced using ggplot2, and linear regression models were fit to assess the relationship between each metric and win percentage. Model evaluation focused on slope magnitude, statistical significance, and goodness of fit (R²) to compare the reliability of offensive and defensive indicators.
+
+```{r}
+library(tidyverse)
+library(broom)
+```
+
+```{r Reading in Data, results = 'hide'}
+cfb23 <- read_csv("cfb23.csv")
+
+glimpse(cfb23)
+```
+
+```{r, results = 'hide'}
+cfb23$`Win-Loss`
+```
+```{r Seperating Wins and Losses}
+cfb23 <- cfb23 %>% 
+  separate('Win-Loss', c('win', 'loss'), sep = '-', convert = TRUE, remove = FALSE)
+```
+
+
+```{r}
+features <- c("Off Yards per Game", 
+              "Off TDs", 
+              "Points Per Game", 
+              "Yards Per Game Allowed", 
+              "Total TDs Allowed", 
+              "Penalty Yards Per Game", 
+              "Avg Points per Game Allowed",
+              "win",
+              "Off Rank",
+              "Def Rank",
+              "Off TDs Allowed",
+              "Turnover Margin",
+              "Games")
+```
+
+```{r, results = 'hide'}
+cfb23 <- cfb23 %>%
+  mutate(across(all_of(features), as.numeric))
+
+cfb23$win_percentage <- (cfb23$win/cfb23$Games)*100
+cfb23
+```
+
+## Results
+
+My analysis found that offensive performance has a stronger correlation with winning games than defensive performance. Below are the statistical results found that support that conclusion. 
+
+### Offensive Touchdowns Scored  
+There was a clear positive linear relationship between offensive touchdowns scored and win percentage. Each additional touchdown scored corresponded to a 1.22-point increase in win percentage. The model had a relatively strong fit with an R squared value of 0.582, which means that about 58% of the variation in win percentage can be explained by offensive touchdowns alone. The p-value was close to zero, which indicates a statistically significant relationship.
+
+```{r}
+cfb23 %>% 
+  filter(! is.na(`Off Rank`)) %>% 
+  ggplot(aes(`Off TDs`, win_percentage, color = `Off Rank`))+
+  geom_jitter()+
+  labs(y = "Win Percentage",
+       x = "Offensive Touchdowns Scored")
+```
+
+```{r}
+Offensive.mod <- lm(win_percentage ~ `Off TDs`, data = cfb23)
+tidy(Offensive.mod)
+```
+
+```{r}
+glance(Offensive.mod)
+```
+
+### Touchdowns Allowed (Defense)  
+The number of offensive touchdowns allowed showed a weaker but still statistically significant negative relationship with win percentage. Teams that allowed more touchdowns tended to win less. Each additional touchdown allowed decreased win percentage by 1.18 percent. This model had a lower R squared of 0.28, which means it explains about half as much of the variation in win percentage as touchdowns scored does.
+
+```{r}
+cfb23 %>% 
+  filter(! is.na(`Def Rank`)) %>% 
+  ggplot(aes(`Off TDs Allowed`, win_percentage, color = `Def Rank`))+
+  geom_jitter()+
+  scale_x_continuous(limits = c(10, 65), breaks = seq(10, 65, by = 10))+
+  labs(y = "Win Percentage",
+       x = "Offensive Touchdowns Allowed")
+```
+
+```{r}
+defense.mod <- lm(win_percentage ~ `Off TDs Allowed`, data = cfb23)
+tidy(defense.mod)
+```
+
+```{r}
+glance(defense.mod)
+```
+
+### Yards Per Game (Offense) and Yards Allowed (Defense)  
+A combined linear model with offensive yards gained and defensive yards allowed revealed that win percentage increased by 0.203 per additional offensive yard gained. For every additional yard allowed on defense, win percentage decreased by 0.242. This model had the highest R squared value of 0.626, which means it could predict win percentage decently (explains 62.6% variance). Both predictors were statistically significant.
+
+```{r}
+mult.lm <- lm(win_percentage ~ `Off Yards per Game` + `Yards Per Game Allowed`, data = cfb23)
+tidy(mult.lm)
+```
+
+```{r}
+glance(mult.lm)
+```
+
+### Turnover Margin  
+Turnover margin offered a hybrid offensive/defensive indicator and showed a significant positive correlation with win percentage. Each one-unit increase in turnover margin raised win percentage by 1.87 points, with an R squared value of 0.34.
+
+The boxplot of turnover margins and win percentage showed that teams with positive turnover margins tended to cluster at higher win percentages.
+
+```{r}
+cfb23 %>% 
+   filter(! is.na(`Turnover Margin`), `Turnover Margin` %in% c(-9,-6,-3,0,3,6,9)) %>%
+ggplot(aes(as.factor(`Turnover Margin`), win_percentage)) +
+  geom_boxplot(fill = "lightblue", color = "black")+
+  labs(y = "Win Percentage",
+       x = "Turnover Margin")
+```
+
+```{r}
+turnover.mod <- lm(win_percentage ~ `Turnover Margin`, data = cfb23)
+tidy(turnover.mod)
+```
+
+```{r}
+glance(turnover.mod)
+```
+
+### Results Summary  
+Across all models, offensive touchdowns scored and yards per game were the most reliable indicators of success, with both strong slopes and high R squared values. Defensive statistics such as touchdowns allowed and yards allowed were significant but weaker predictors. The turnover margin offered a useful hybrid indicator but didn't explain as much variation as core offensive metrics.
+
+These results suggest that, while defense plays a role, offense is more predictive and reliable for determining a college football team’s win percentage.
+
+## Conclusion
+
+This analysis shows that offensive performance, especially touchdowns scored and offensive yards per game, is more strongly associated with winning than defensive metrics. While defensive statistics and turnover margin were significant, they explained less variation in win percentage than offensive metrics. Overall, the results suggest that offense is a more reliable predictor of success in college football.
+
+Future work could expand this analysis by incorporating multiple seasons, additional variables such as strength of schedule, and more advanced models to better capture the complexity of team performance.
+
+## References 
+
+Brooks, Amanda. “ESPN and ABC Deliver Record-Breaking College Football Viewership in 2024 – ABC Scores Top Two Most-Watched Windows with ABC Saturday Night Football More Than Doubling the Competition.” ESPN Press Room, 5 12 2024, https://espnpressroom.com/us/press-releases/2024/12/espn-and-abc-deliver-record-breaking-college-football-viewership-in-2024-abc-scores-top-two-most-watched-windows-with-abc-saturday-night-football-more-than-doubling-the-competition/. Accessed April 2025. 
+
+“College Football Team Stats Seasons 2013 to 2023.” Kaggle, https://www.kaggle.com/datasets/jeffgallini/college-football-team-stats-2019. Accessed April 2025. 
+
+“How can I separate a Win-Loss record into 2 columns in R?” Stack Overflow, 2023, https://stackoverflow.com/questions/73379646/how-can-i-separate-a-win-loss-record-into-2-columns-in-r. Accessed 4 2025. 
+
+“What makes College Football an integral part of US culture?” Syracuse News Times, Staff, 10 10 2024, https://syracusenewtimes.com/what-makes-college-football-an-integral-part-of-us-culture/. Accessed April 2025. 
